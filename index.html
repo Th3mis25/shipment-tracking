@@ -153,6 +153,7 @@
     const addForm = document.getElementById("addForm");
     const formStatus = document.getElementById("formStatus");
     const formMsg = document.getElementById("formMsg");
+    const saveBtn = document.getElementById("saveBtn");
     const modalTitle = document.getElementById("modalTitle");
     let editingRow = null;
 
@@ -389,7 +390,13 @@
       return record;
     };
 
-    addForm.addEventListener("submit", (ev) => {
+    const setSavingState = (isSaving, message = "") => {
+      saveBtn.disabled = isSaving;
+      saveBtn.textContent = isSaving ? "Saving…" : "Save";
+      formMsg.textContent = message;
+    };
+
+    addForm.addEventListener("submit", async (ev) => {
       ev.preventDefault();
       formMsg.textContent = "";
 
@@ -402,17 +409,56 @@
         return;
       }
 
+      const mode = editingRow ? "update" : "add";
+      const payload = { mode, record };
+
       if (editingRow) {
-        updateRowElement(editingRow, record);
-        const tripLabel = record["Trip"] || "sin número";
-        msgEl.textContent = `Trip ${tripLabel} actualizado localmente.`;
-      } else {
-        const newRow = createRow(record);
-        tbody.prepend(newRow);
-        msgEl.textContent = `Cargados ${tbody.querySelectorAll("tr").length} registros.`;
+        payload.originalTrip = editingRow._rowData?.["Trip"] || "";
       }
 
-      closeModal();
+      try {
+        setSavingState(true, "Guardando…");
+        const response = await fetch(BASE_URL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status} ${response.statusText || ""} ${errorText}`.trim());
+        }
+
+        const data = await response.json().catch(() => {
+          throw new Error("Respuesta inválida del servidor.");
+        });
+
+        if (!data || data.success === false) {
+          const errMessage = data && data.error ? data.error : "La operación no pudo completarse.";
+          throw new Error(errMessage);
+        }
+
+        const confirmedRecord = normaliseRow(data.row || record);
+
+        if (mode === "update" && editingRow) {
+          updateRowElement(editingRow, confirmedRecord);
+        } else if (mode === "add") {
+          const newRow = createRow(confirmedRecord);
+          tbody.prepend(newRow);
+        }
+
+        const tripLabel = confirmedRecord["Trip"] || "sin número";
+        msgEl.textContent = data.message ||
+          `Trip ${tripLabel} ${mode === "add" ? "registrado" : "actualizado"} correctamente.`;
+        closeModal();
+      } catch (error) {
+        console.error(error);
+        formMsg.textContent = `Error: ${error.message}`;
+      } finally {
+        setSavingState(false, formMsg.textContent);
+      }
     });
   </script>
 </body>
