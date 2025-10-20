@@ -304,6 +304,17 @@
       });
     };
 
+    const renderErrorMessage = (message) => {
+      msgEl.textContent = "";
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.colSpan = 18;
+      td.className = "err";
+      td.textContent = message;
+      tr.appendChild(td);
+      tbody.replaceChildren(tr);
+    };
+
     (async () => {
       try {
         console.log("GET:", READ_URL);
@@ -315,8 +326,9 @@
         console.log("Raw length:", text.length);
         // Si vino HTML (error/consent), muéstralo:
         if (text.trim().startsWith("<")) {
-          msgEl.innerHTML = "";
-          tbody.innerHTML = `<tr><td colspan="18" class="err">La API devolvió HTML en lugar de JSON:\n\n${text.slice(0,800)}...</td></tr>`;
+          renderErrorMessage(
+            `La API devolvió HTML en lugar de JSON:\n\n${text.slice(0, 800)}...`
+          );
           return;
         }
 
@@ -324,8 +336,9 @@
         console.log("Rows parsed:", Array.isArray(rows) ? rows.length : "no-array", rows);
 
         if (!Array.isArray(rows)) {
-          msgEl.innerHTML = "";
-          tbody.innerHTML = `<tr><td colspan="18" class="err">Respuesta inesperada (no es arreglo): ${text.slice(0,800)}...</td></tr>`;
+          renderErrorMessage(
+            `Respuesta inesperada (no es arreglo): ${text.slice(0, 800)}...`
+          );
           return;
         }
         if (rows.length === 0) {
@@ -339,8 +352,7 @@
         });
 
       } catch (e) {
-        msgEl.innerHTML = "";
-        tbody.innerHTML = `<tr><td colspan="18" class="err">Fallo al cargar: ${e.message}</td></tr>`;
+        renderErrorMessage(`Fallo al cargar: ${e.message}`);
         console.error(e);
       }
     })();
