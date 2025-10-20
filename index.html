@@ -149,8 +149,6 @@
     const createRow = (row) => {
       const tr = document.createElement("tr");
       const currentStatus = row["Status"] || "";
-      const options = buildStatusOptions(currentStatus);
-
       tr.innerHTML = `
         <td>${row["Executive"] || ""}</td>
         <td>${row["Trip"] || ""}</td>
@@ -159,11 +157,7 @@
         <td>${row["Customer"] || ""}</td>
         <td>${row["Destination"] || ""}</td>
 
-        <td>
-          <select class="status-select" data-trip="${row["Trip"] || ""}">
-            ${options}
-          </select>
-        </td>
+        <td>${currentStatus}</td>
 
         <td>${row["Segment"] || ""}</td>
         <td>${row["TR-MX"] || ""}</td>
