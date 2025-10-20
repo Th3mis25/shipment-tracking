@@ -25,11 +25,14 @@
     .modal-card h2 { margin-top:0; color:#0B2341; }
     .form-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px,1fr)); gap:12px; }
     .form-grid label { display:flex; flex-direction:column; font-size:13px; color:#0B2341; gap:4px; }
-    .form-grid input, .form-grid select { padding:8px; border:1px solid #ccd1dd; border-radius:4px; font-size:14px; }
+    .form-grid input, .form-grid select, .form-grid textarea { padding:8px; border:1px solid #ccd1dd; border-radius:4px; font-size:14px; font-family:inherit; }
+    .form-grid textarea { resize:vertical; min-height:80px; }
     .form-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; }
-    .form-actions .primary { background:#1a73e8; }
+    .form-actions .primary { background:#0b57d0; color:#fff; font-weight:600; box-shadow:0 4px 12px rgba(11,87,208,0.35); }
     .form-actions .secondary { background:#e5e7ef; color:#0B2341; }
     .form-msg { margin-top:10px; min-height:18px; font-size:13px; color:#b00; }
+    .trip-link { background:none; border:none; color:#1a73e8; text-decoration:underline; padding:0; font:inherit; cursor:pointer; }
+    .trip-link:hover, .trip-link:focus { color:#0b57d0; outline:none; }
   </style>
 </head>
 <body>
@@ -83,8 +86,32 @@
           <label>Segment
             <input type="text" name="Segment" autocomplete="off" />
           </label>
+          <label>TR-MX
+            <input type="text" name="TR-MX" autocomplete="off" />
+          </label>
+          <label>TR-USA
+            <input type="text" name="TR-USA" autocomplete="off" />
+          </label>
           <label>Pickup Appointment
             <input type="datetime-local" name="Pickup Appointment" />
+          </label>
+          <label>Arrival at Pickup
+            <input type="datetime-local" name="Arrival at Pickup" />
+          </label>
+          <label>Delivery Appointment
+            <input type="datetime-local" name="Delivery Appointment" />
+          </label>
+          <label>Arrival at Delivery
+            <input type="datetime-local" name="Arrival at Delivery" />
+          </label>
+          <label>Comments
+            <textarea name="Comments"></textarea>
+          </label>
+          <label>Documents
+            <input type="text" name="Documents" autocomplete="off" />
+          </label>
+          <label>Tracking
+            <input type="text" name="Tracking" autocomplete="off" />
           </label>
         </div>
         <div class="form-msg" id="formMsg"></div>
@@ -108,6 +135,16 @@
       "In transit USA","Delivered","Cancelled","Delayed","At destination"
     ];
 
+    const COLUMN_KEYS = [
+      "Executive","Trip","Trailer","Reference","Customer","Destination",
+      "Status","Segment","TR-MX","TR-USA","Pickup Appointment","Arrival at Pickup",
+      "Delivery Appointment","Arrival at Delivery","Comments","Documents","Tracking"
+    ];
+
+    const DATETIME_FIELDS = [
+      "Pickup Appointment","Arrival at Pickup","Delivery Appointment","Arrival at Delivery"
+    ];
+
     const tbody = document.querySelector("#table tbody");
     const msgEl = document.getElementById("msg");
     const addBtn = document.getElementById("addBtn");
@@ -116,29 +153,103 @@
     const addForm = document.getElementById("addForm");
     const formStatus = document.getElementById("formStatus");
     const formMsg = document.getElementById("formMsg");
+    const modalTitle = document.getElementById("modalTitle");
+    let editingRow = null;
 
-    const buildStatusOptions = (selected) =>
-      STATUS_OPTIONS
-        .map(
-          (s) => `<option value="${s}" ${s === selected ? "selected" : ""}>${s}</option>`
-        )
-        .join("");
+    const buildStatusOptions = () =>
+      STATUS_OPTIONS.map((s) => `<option value="${s}">${s}</option>`).join("");
 
-    formStatus.innerHTML = `<option value="">Select status</option>${buildStatusOptions("")}`;
+    formStatus.innerHTML = `<option value="">Select status</option>${buildStatusOptions()}`;
+
+    const toInputDateTime = (value) => {
+      if (!value) return "";
+      const raw = value.toString().trim();
+      if (!raw) return "";
+      let candidate = "";
+      if (raw.includes("T")) {
+        const [date, time = ""] = raw.split("T");
+        candidate = `${date}T${time.slice(0,5)}`;
+      } else {
+        const parts = raw.split(/\s+/);
+        if (parts.length >= 2) {
+          candidate = `${parts[0]}T${parts[1].slice(0,5)}`;
+        }
+      }
+      return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(candidate) ? candidate : "";
+    };
+
+    const fromInputDateTime = (value) => {
+      if (!value) return "";
+      const raw = value.toString().trim();
+      return raw.includes("T") ? raw.replace("T", " ") : raw;
+    };
+
+    const normaliseRow = (row = {}) => {
+      const normalized = {};
+      COLUMN_KEYS.forEach((key) => {
+        const value = row[key];
+        normalized[key] = value == null ? "" : value.toString();
+      });
+      return normalized;
+    };
+
+    const fillFormFields = (data) => {
+      COLUMN_KEYS.forEach((key) => {
+        if (key === "Status") {
+          const value = data[key] || "";
+          if (value && !Array.from(formStatus.options).some((opt) => opt.value === value)) {
+            const extraOption = document.createElement("option");
+            extraOption.value = value;
+            extraOption.textContent = value;
+            formStatus.appendChild(extraOption);
+          }
+          formStatus.value = value;
+          return;
+        }
+        const field = addForm.elements[key];
+        if (!field) return;
+        let value = data[key] || "";
+        if (DATETIME_FIELDS.includes(key)) {
+          value = toInputDateTime(value);
+        }
+        field.value = value;
+      });
+    };
 
     const closeModal = () => {
       modal.classList.remove("open");
       addForm.reset();
       formMsg.textContent = "";
-      formStatus.innerHTML = `<option value="">Select status</option>${buildStatusOptions("")}`;
+      formStatus.value = "";
+      addForm.dataset.mode = "add";
+      modalTitle.textContent = "Add shipment";
+      editingRow = null;
     };
 
-    const openModal = () => {
+    const openModalForAdd = () => {
+      editingRow = null;
+      addForm.dataset.mode = "add";
+      modalTitle.textContent = "Add shipment";
+      formMsg.textContent = "";
+      addForm.reset();
+      formStatus.value = "";
       modal.classList.add("open");
-      addForm.elements["Executive"].focus();
+      addForm.elements["Trip"].focus();
     };
 
-    addBtn.addEventListener("click", openModal);
+    const openModalForRow = (tr) => {
+      const data = normaliseRow(tr._rowData || {});
+      editingRow = tr;
+      addForm.dataset.mode = "edit";
+      modalTitle.textContent = data["Trip"] ? `Trip ${data["Trip"]}` : "Trip";
+      formMsg.textContent = "";
+      addForm.reset();
+      fillFormFields(data);
+      modal.classList.add("open");
+      addForm.elements["Trip"].focus();
+    };
+
+    addBtn.addEventListener("click", openModalForAdd);
     cancelBtn.addEventListener("click", closeModal);
     modal.addEventListener("click", (ev) => {
       if (ev.target === modal) {
@@ -148,30 +259,49 @@
 
     const createRow = (row) => {
       const tr = document.createElement("tr");
-      const currentStatus = row["Status"] || "";
-      tr.innerHTML = `
-        <td>${row["Executive"] || ""}</td>
-        <td>${row["Trip"] || ""}</td>
-        <td>${row["Trailer"] || ""}</td>
-        <td>${row["Reference"] || ""}</td>
-        <td>${row["Customer"] || ""}</td>
-        <td>${row["Destination"] || ""}</td>
+      const data = normaliseRow(row);
+      tr._rowData = data;
 
-        <td>${currentStatus}</td>
+      COLUMN_KEYS.forEach((key) => {
+        const td = document.createElement("td");
+        if (key === "Trip") {
+          const btn = document.createElement("button");
+          btn.type = "button";
+          btn.className = "trip-link";
+          btn.textContent = data[key];
+          btn.addEventListener("click", (event) => {
+            event.preventDefault();
+            openModalForRow(tr);
+          });
+          td.appendChild(btn);
+        } else {
+          td.textContent = data[key];
+        }
+        tr.appendChild(td);
+      });
 
-        <td>${row["Segment"] || ""}</td>
-        <td>${row["TR-MX"] || ""}</td>
-        <td>${row["TR-USA"] || ""}</td>
-        <td>${row["Pickup Appointment"] || ""}</td>
-        <td>${row["Arrival at Pickup"] || ""}</td>
-        <td>${row["Delivery Appointment"] || ""}</td>
-        <td>${row["Arrival at Delivery"] || ""}</td>
-        <td>${row["Comments"] || ""}</td>
-        <td>${row["Documents"] || ""}</td>
-        <td>${row["Tracking"] || ""}</td>
-        <td></td>
-      `;
+      const actionTd = document.createElement("td");
+      tr.appendChild(actionTd);
       return tr;
+    };
+
+    const updateRowElement = (tr, rowData) => {
+      const data = normaliseRow(rowData);
+      tr._rowData = data;
+      COLUMN_KEYS.forEach((key, idx) => {
+        const cell = tr.children[idx];
+        if (!cell) return;
+        if (key === "Trip") {
+          const btn = cell.querySelector(".trip-link");
+          if (btn) {
+            btn.textContent = data[key];
+          } else {
+            cell.textContent = data[key];
+          }
+        } else {
+          cell.textContent = data[key];
+        }
+      });
     };
 
     (async () => {
@@ -204,7 +334,7 @@
         }
         msgEl.textContent = `Cargados ${rows.length} registros.`;
 
-        rows.forEach(row => {
+        rows.forEach((row) => {
           tbody.appendChild(createRow(row));
         });
 
@@ -215,44 +345,47 @@
       }
     })();
 
+    const formDataToRow = (formData) => {
+      const record = {};
+      COLUMN_KEYS.forEach((key) => {
+        let value = formData.get(key);
+        if (value == null) {
+          value = "";
+        }
+        value = value.toString();
+        if (DATETIME_FIELDS.includes(key)) {
+          value = value ? fromInputDateTime(value) : "";
+        } else {
+          value = value.trim();
+        }
+        record[key] = value;
+      });
+      return record;
+    };
+
     addForm.addEventListener("submit", (ev) => {
       ev.preventDefault();
       formMsg.textContent = "";
 
       const formData = new FormData(addForm);
-      const trip = (formData.get("Trip") || "").toString().trim();
+      const record = formDataToRow(formData);
 
-      if (!trip) {
+      if (!record["Trip"]) {
         formMsg.textContent = "Trip is required.";
         addForm.elements["Trip"].focus();
         return;
       }
 
-      const pickupRaw = formData.get("Pickup Appointment");
-      const pickupFormatted = pickupRaw ? pickupRaw.toString().replace("T", " ") : "";
+      if (editingRow) {
+        updateRowElement(editingRow, record);
+        const tripLabel = record["Trip"] || "sin número";
+        msgEl.textContent = `Trip ${tripLabel} actualizado localmente.`;
+      } else {
+        const newRow = createRow(record);
+        tbody.prepend(newRow);
+        msgEl.textContent = `Cargados ${tbody.querySelectorAll("tr").length} registros.`;
+      }
 
-      const newRow = {
-        "Executive": formData.get("Executive") || "",
-        "Trip": trip,
-        "Trailer": formData.get("Trailer") || "",
-        "Reference": formData.get("Reference") || "",
-        "Customer": formData.get("Customer") || "",
-        "Destination": formData.get("Destination") || "",
-        "Status": formData.get("Status") || "",
-        "Segment": formData.get("Segment") || "",
-        "TR-MX": "",
-        "TR-USA": "",
-        "Pickup Appointment": pickupFormatted,
-        "Arrival at Pickup": "",
-        "Delivery Appointment": "",
-        "Arrival at Delivery": "",
-        "Comments": "",
-        "Documents": "",
-        "Tracking": ""
-      };
-
-      tbody.prepend(createRow(newRow));
-      msgEl.textContent = `Cargados ${tbody.querySelectorAll("tr").length} registros.`;
       closeModal();
     });
   </script>
