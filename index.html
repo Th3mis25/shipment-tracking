@@ -113,34 +113,9 @@
             <td>${row["Comments"] || ""}</td>
             <td>${row["Documents"] || ""}</td>
             <td>${row["Tracking"] || ""}</td>
-            <td><button class="save-btn" data-trip="${row["Trip"] || ""}">Save</button></td>
+            <td></td>
           `;
           tbody.appendChild(tr);
-        });
-
-        // Guardar Status
-        document.addEventListener("click", async (ev) => {
-          const btn = ev.target.closest(".save-btn");
-          if (!btn) return;
-          const trip = btn.dataset.trip;
-          const select = document.querySelector(`.status-select[data-trip="${trip}"]`);
-          const newStatus = select.value;
-
-          btn.disabled = true; btn.textContent = "Saving...";
-          try {
-            const res = await fetch(BASE_URL, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ trip, field: "Status", value: newStatus })
-            });
-            const data = await res.json();
-            console.log("POST result:", data);
-            if (data.ok) { btn.textContent = "Saved ✓"; setTimeout(()=>{ btn.textContent="Save"; btn.disabled=false;},800); }
-            else { alert("Error: " + (data.error || "Unknown")); btn.textContent="Save"; btn.disabled=false; }
-          } catch (e) {
-            alert("No se pudo guardar: " + e.message);
-            btn.textContent = "Save"; btn.disabled = false;
-          }
         });
 
       } catch (e) {
