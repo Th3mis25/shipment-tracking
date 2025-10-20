@@ -16,14 +16,15 @@ function doGet(e) {
 }
 
 function doPost(e) {
+  let mode = '';
   try {
     const payload = parseBody_(e);
-    const mode = (payload.mode || '').toLowerCase();
+    mode = (payload.mode || '').toLowerCase();
     const record = payload.record || {};
 
     validateRecord_(record);
 
-    let row;
+    let row = null;
     if (mode === 'add') {
       row = addRow_(record);
     } else if (mode === 'update') {
@@ -32,13 +33,18 @@ function doPost(e) {
       throw new Error('Modo no soportado. Usa "add" o "update".');
     }
 
+    if (!row) {
+      throw new Error('No se pudo escribir el registro en la hoja.');
+    }
+
     const message = mode === 'add'
       ? 'Registro creado correctamente.'
       : 'Registro actualizado correctamente.';
 
     return buildJsonResponse_({ success: true, mode, row, message });
   } catch (error) {
-    return buildJsonResponse_({ success: false, error: error.message }, 400);
+    const message = error && error.message ? error.message : 'Error desconocido.';
+    return buildJsonResponse_({ success: false, mode, row: null, message }, 400);
   }
 }
 
