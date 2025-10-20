@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Shipment Tracking</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f5f6fa; padding:20px; }
+    h1 { color:#0B2341; display:flex; align-items:center; gap:10px; }
+    table { width:100%; border-collapse:collapse; background:#fff; }
+    th, td { border:1px solid #ddd; padding:8px; text-align:center; }
+    th { background:#0B2341; color:#fff; position:sticky; top:0; }
+    tr:hover { background:#eef3ff; }
+    button { padding:6px 10px; cursor:pointer; }
+    select { padding:4px; }
+    .msg { margin:12px 0; font-size:14px; color:#0B2341; }
+    .err { color:#b00; white-space:pre-wrap; text-align:left; }
+  </style>
+</head>
+<body>
+  <h1>🚛 Shipment Tracking</h1>
+  <div id="msg" class="msg">Cargando…</div>
+
+  <table id="table">
+    <thead>
+      <tr>
+        <th>Executive</th><th>Trip</th><th>Trailer</th><th>Reference</th>
+        <th>Customer</th><th>Destination</th><th>Status</th><th>Segment</th>
+        <th>TR-MX</th><th>TR-USA</th>
+        <th>Pickup Appointment</th><th>Arrival at Pickup</th>
+        <th>Delivery Appointment</th><th>Arrival at Delivery</th>
+        <th>Comments</th><th>Documents</th><th>Tracking</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    // === TU URL de Web App (exec) ===
+    const BASE_URL = "https://script.google.com/macros/s/AKfycbzNzHDowQ7uMywYiLky-59w417vXGMKaVS_Dd2revHJJ02vpNvOHOBkjZujRMu_EXY/exec";
+    const READ_URL = BASE_URL + "?mode=display";
+
+    // === Estatus oficiales ===
+    const STATUS_OPTIONS = [
+      "Drop","Live","Assigned","Loading","In transit MX",
+      "At Monterrey yard","At Nuevo Laredo yard","At Queretaro yard",
+      "In transit USA","Delivered","Cancelled","Delayed","At destination"
+    ];
+
+    const tbody = document.querySelector("#table tbody");
+    const msgEl = document.getElementById("msg");
+
+    (async () => {
+      try {
+        console.log("GET:", READ_URL);
+        const res = await fetch(READ_URL, { cache: "no-store" });
+        console.log("HTTP status:", res.status, res.statusText);
+        if (!res.ok) throw new Error("HTTP " + res.status);
+
+        const text = await res.text();
+        console.log("Raw length:", text.length);
+        // Si vino HTML (error/consent), muéstralo:
+        if (text.trim().startsWith("<")) {
+          msgEl.innerHTML = "";
+          tbody.innerHTML = `<tr><td colspan="18" class="err">La API devolvió HTML en lugar de JSON:\n\n${text.slice(0,800)}...</td></tr>`;
+          return;
+        }
+
+        const rows = JSON.parse(text);
+        console.log("Rows parsed:", Array.isArray(rows) ? rows.length : "no-array", rows);
+
+        if (!Array.isArray(rows)) {
+          msgEl.innerHTML = "";
+          tbody.innerHTML = `<tr><td colspan="18" class="err">Respuesta inesperada (no es arreglo): ${text.slice(0,800)}...</td></tr>`;
+          return;
+        }
+        if (rows.length === 0) {
+          msgEl.textContent = "Sin datos para mostrar.";
+          return;
+        }
+        msgEl.textContent = `Cargados ${rows.length} registros.`;
+
+        rows.forEach(row => {
+          const tr = document.createElement("tr");
+
+          const currentStatus = row["Status"] || "";
+          const options = STATUS_OPTIONS
+            .map(s => `<option value="${s}" ${s === currentStatus ? "selected" : ""}>${s}</option>`)
+            .join("");
+
+          tr.innerHTML = `
+            <td>${row["Executive"] || ""}</td>
+            <td>${row["Trip"] || ""}</td>
+            <td>${row["Trailer"] || ""}</td>
+            <td>${row["Reference"] || ""}</td>
+            <td>${row["Customer"] || ""}</td>
+            <td>${row["Destination"] || ""}</td>
+
+            <td>
+              <select class="status-select" data-trip="${row["Trip"] || ""}">
+                ${options}
+              </select>
+            </td>
+
+            <td>${row["Segment"] || ""}</td>
+            <td>${row["TR-MX"] || ""}</td>
+            <td>${row["TR-USA"] || ""}</td>
+            <td>${row["Pickup Appointment"] || ""}</td>
+            <td>${row["Arrival at Pickup"] || ""}</td>
+            <td>${row["Delivery Appointment"] || ""}</td>
+            <td>${row["Arrival at Delivery"] || ""}</td>
+            <td>${row["Comments"] || ""}</td>
+            <td>${row["Documents"] || ""}</td>
+            <td>${row["Tracking"] || ""}</td>
+            <td><button class="save-btn" data-trip="${row["Trip"] || ""}">Save</button></td>
+          `;
+          tbody.appendChild(tr);
+        });
+
+        // Guardar Status
+        document.addEventListener("click", async (ev) => {
+          const btn = ev.target.closest(".save-btn");
+          if (!btn) return;
+          const trip = btn.dataset.trip;
+          const select = document.querySelector(`.status-select[data-trip="${trip}"]`);
+          const newStatus = select.value;
+
+          btn.disabled = true; btn.textContent = "Saving...";
+          try {
+            const res = await fetch(BASE_URL, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ trip, field: "Status", value: newStatus })
+            });
+            const data = await res.json();
+            console.log("POST result:", data);
+            if (data.ok) { btn.textContent = "Saved ✓"; setTimeout(()=>{ btn.textContent="Save"; btn.disabled=false;},800); }
+            else { alert("Error: " + (data.error || "Unknown")); btn.textContent="Save"; btn.disabled=false; }
+          } catch (e) {
+            alert("No se pudo guardar: " + e.message);
+            btn.textContent = "Save"; btn.disabled = false;
+          }
+        });
+
+      } catch (e) {
+        msgEl.innerHTML = "";
+        tbody.innerHTML = `<tr><td colspan="18" class="err">Fallo al cargar: ${e.message}</td></tr>`;
+        console.error(e);
+      }
+    })();
+  </script>
+</body>
+</html>
