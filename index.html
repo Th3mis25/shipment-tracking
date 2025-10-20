@@ -165,16 +165,30 @@
       if (!value) return "";
       const raw = value.toString().trim();
       if (!raw) return "";
-      let candidate = "";
+
+      let datePart = "";
+      let timePart = "";
+
       if (raw.includes("T")) {
-        const [date, time = ""] = raw.split("T");
-        candidate = `${date}T${time.slice(0,5)}`;
+        [datePart, timePart = ""] = raw.split("T");
       } else {
         const parts = raw.split(/\s+/);
         if (parts.length >= 2) {
-          candidate = `${parts[0]}T${parts[1].slice(0,5)}`;
+          [datePart, timePart] = [parts[0], parts[1]];
         }
       }
+
+      datePart = datePart.trim();
+      timePart = timePart.trim();
+      if (!datePart || !timePart) return "";
+
+      const timeMatch = timePart.match(/(\d{1,2}):(\d{1,2})/);
+      if (!timeMatch) return "";
+
+      const hours = timeMatch[1].padStart(2, "0");
+      const minutes = timeMatch[2].padStart(2, "0");
+      const candidate = `${datePart}T${hours}:${minutes}`;
+
       return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(candidate) ? candidate : "";
     };
 
